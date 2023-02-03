@@ -1,0 +1,212 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: This stack deploys the servicediscovery network
+
+Mappings:
+  SubnetConfig:
+    VPC:
+      CIDR: "10.0.0.0/16"
+    PublicOne:
+      CIDR: "10.0.0.0/24"
+    PublicTwo:
+      CIDR: "10.0.1.0/24"
+    Cloud9:
+      CIDR: "10.0.2.0/24"
+    PrivateOne:
+      CIDR: "10.0.100.0/24"
+    PrivateTwo:
+      CIDR: "10.0.101.0/24"
+
+Resources:
+  # VPC作成
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: !FindInMap ["SubnetConfig", "VPC", "CIDR"]
+      Tags:
+        - Key: Name
+          Value: vpc-servicediscovery-test
+
+  # Subnet作成
+  PublicOneSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !FindInMap ["SubnetConfig", "PublicOne", "CIDR"]
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref VPC
+      AvailabilityZone: ap-northeast-1a
+      Tags:
+        - Key: Name
+          Value: servicediscovery-test-PublicOneSubnet
+  PublicTwoSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !FindInMap ["SubnetConfig", "PublicTwo", "CIDR"]
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref VPC
+      AvailabilityZone: ap-northeast-1c
+      Tags:
+        - Key: Name
+          Value: servicediscovery-test-PublicTwoSubnet
+  Cloud9Subnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !FindInMap ["SubnetConfig", "Cloud9", "CIDR"]
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref VPC
+      AvailabilityZone: ap-northeast-1a
+      Tags:
+        - Key: Name
+          Value: servicediscovery-test-Cloud9Subnet
+  PrivateOneSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !FindInMap ["SubnetConfig", "PrivateOne", "CIDR"]
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref VPC
+      AvailabilityZone: ap-northeast-1a
+      Tags:
+        - Key: Name
+          Value: servicediscovery-test-PrivateOneSubnet
+  PrivateTwoSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !FindInMap ["SubnetConfig", "PrivateTwo", "CIDR"]
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref VPC
+      AvailabilityZone: ap-northeast-1c
+      Tags:
+        - Key: Name
+          Value: servicediscovery-test-PrivateTwoSubnet
+
+  # インターネットゲートウェイ作成とVPCへの紐づけ
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: servicediscovery-test-InternetGateway
+  AttachInternetGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  # ルートテーブルの作成とサブネット(Public)との紐づけ
+  RouteTableForPublicSubnet:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: servicediscovery-test-RouteTableForPublicSubnet
+  RouteForPublicSubnet:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTableForPublicSubnet
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  AssocciateRouteTableForPublicOneSubnet:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTableForPublicSubnet
+      SubnetId: !Ref PublicOneSubnet
+  AssocciateRouteTableForPublicTwoSubnet:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTableForPublicSubnet
+      SubnetId: !Ref PublicTwoSubnet
+  AssocciateRouteTableForCloud9Subnet:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTableForPublicSubnet
+      SubnetId: !Ref Cloud9Subnet
+
+  # NATゲートウェイの作成
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+          - NatGatewayEIP
+          - AllocationId
+      SubnetId: !Ref PublicOneSubnet
+      Tags:
+        - Key: Name
+          Value: servicediscovery-test-NatGateway
+
+  # ルートテーブルの作成とサブネット(Private)との紐づけ
+  RouteTableForPrivateSubnet:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: RouteTableForPrivateSubnet
+  RouteForPrivateSubnet:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTableForPrivateSubnet
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+  AssocciateRouteTableForPrivateOneSubnet:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTableForPrivateSubnet
+      SubnetId: !Ref PrivateOneSubnet
+  AssocciateRouteTableForPrivateTwoSubnet:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTableForPrivateSubnet
+      SubnetId: !Ref PrivateTwoSubnet
+
+  # セキュリティグループ作成
+  ContainerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: servicediscovery-test-Container-SecurityGroup
+      GroupDescription: Access to the containers
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - CidrIp: !FindInMap ["SubnetConfig", "VPC", "CIDR"]
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+      Tags:
+        - Key: Name
+          Value: servicediscovery-test-ContainerSecurityGroup
+
+Outputs:
+  VpcId:
+    Value: !Ref VPC
+    Export:
+      Name: VPCFromServicediscoveryStack
+  PublicOneSubnet:
+    Value: !Ref PublicOneSubnet
+    Export:
+      Name: PublicOneSubnetFromServicediscoveryStack
+  PublicTwoSubnet:
+    Value: !Ref PublicTwoSubnet
+    Export:
+      Name: PublicTwoSubnetFromServicediscoveryStack
+  Cloud9Subnet:
+    Value: !Ref Cloud9Subnet
+    Export:
+      Name: Cloud9SubnetFromServicediscoveryStack
+  PrivateOneSubnet:
+    Value: !Ref PrivateOneSubnet
+    Export:
+      Name: PrivateOneSubnetFromServicediscoveryStack
+  PrivateTwoSubnet:
+    Value: !Ref PrivateTwoSubnet
+    Export:
+      Name: PrivateTwoSubnetFromServicediscoveryStack
+  ContainerSecurityGroup:
+    Value: !Ref ContainerSecurityGroup
+    Export:
+      Name: ContainerSecurityGroupFromServicediscoveryStack

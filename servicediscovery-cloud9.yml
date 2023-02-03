@@ -1,0 +1,24 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This stack deploys the servicediscovery cloud9
+
+# 事前作成リソース
+# servicediscovery-network.yml
+
+Resources:
+  # Cloud9を作成
+  Cloud9:
+    Type: AWS::Cloud9::EnvironmentEC2
+    Properties:
+      AutomaticStopTimeMinutes: 30
+      ConnectionType: CONNECT_SSH
+      Description: This cloud9 servicediscovery test
+      InstanceType: t2.micro
+      Name: service-discovery-cloud9
+      SubnetId:
+        Fn::ImportValue: Cloud9SubnetFromServicediscoveryStack
+
+Outputs:
+  Cloud9:
+    Value: !GetAtt Cloud9.Arn
+    Export:
+      Name: service-discovery-cloud9FromServicediscoveryStack
