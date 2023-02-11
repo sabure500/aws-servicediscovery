@@ -1,0 +1,73 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: This stack deploys the servicediscovery eks
+
+Parameters:
+  NamePrefix:
+    Type: String
+    Default: "servicediscovery-test"
+  EKSVersion:
+    Type: String
+    Default: "1.24"
+  ClusterName:
+    Type: String
+    Default: "servicediscovery-test-EKSCluster"
+
+Resources:
+  ClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ClusterName}-Role
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - "sts:AssumeRole"
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "eks.amazonaws.com"
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+        - "arn:aws:iam::aws:policy/AmazonEKSServicePolicy"
+      Path: "/"
+
+  # セキュリティグループ作成
+  ClusterControlPlaneSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for controlPlane
+      VpcId: { "Fn::ImportValue": !Sub "${NamePrefix}-VpvId" }
+      Tags:
+        - Key: Name
+          Value: !Sub ${NamePrefix}-ClusterControlPlaneSecurityGroup
+
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Sub ${ClusterName}
+      ResourcesVpcConfig:
+        EndpointPrivateAccess: false
+        EndpointPublicAccess: true
+        SecurityGroupIds:
+          - !Ref ClusterControlPlaneSecurityGroup
+        SubnetIds:
+          - { "Fn::ImportValue": !Sub "${NamePrefix}-PublicOneSubnet" }
+          - { "Fn::ImportValue": !Sub "${NamePrefix}-PublicTwoSubnet" }
+          # - { "Fn::ImportValue": !Sub "${NamePrefix}-PrivateOneSubnet" }
+          # - { "Fn::ImportValue": !Sub "${NamePrefix}-PrivateTwoSubnet" }
+      RoleArn: !GetAtt ClusterRole.Arn
+      Version: !Sub ${EKSVersion}
+
+Outputs:
+  ClusterRoleArn:
+    Value: !GetAtt ClusterRole.Arn
+  ClusterName:
+    Value: !Sub ${ClusterName}
+    Export:
+      Name: !Sub ${ClusterName}
+  ClusterControlPlaneSecurityGroup:
+    Value: !Ref ClusterControlPlaneSecurityGroup
+    Export:
+      Name: !Sub ${NamePrefix}-ClusterControlPlaneSecurityGroup
+  OpenIdConnectIssuerUrl:
+    Value: !GetAtt EKSCluster.OpenIdConnectIssuerUrl

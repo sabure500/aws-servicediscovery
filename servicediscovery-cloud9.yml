@@ -4,6 +4,11 @@ Description: This stack deploys the servicediscovery cloud9
 # 事前作成リソース
 # servicediscovery-network.yml
 
+Parameters:
+  NamePrefix:
+    Type: String
+    Default: "servicediscovery-test"
+
 Resources:
   # Cloud9を作成
   Cloud9:
@@ -13,12 +18,12 @@ Resources:
       ConnectionType: CONNECT_SSH
       Description: This cloud9 servicediscovery test
       InstanceType: t2.micro
-      Name: service-discovery-cloud9
+      Name: !Sub ${NamePrefix}-cloud9
       SubnetId:
-        Fn::ImportValue: Cloud9SubnetFromServicediscoveryStack
+        Fn::ImportValue: !Sub ${NamePrefix}-Cloud9Subnet
 
 Outputs:
   Cloud9:
     Value: !GetAtt Cloud9.Arn
     Export:
-      Name: service-discovery-cloud9FromServicediscoveryStack
+      Name: !Sub ${NamePrefix}-cloud9

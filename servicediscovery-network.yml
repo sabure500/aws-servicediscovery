@@ -1,6 +1,11 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: This stack deploys the servicediscovery network
 
+Parameters:
+  NamePrefix:
+    Type: String
+    Default: "servicediscovery-test"
+
 Mappings:
   SubnetConfig:
     VPC:
@@ -26,7 +31,7 @@ Resources:
       CidrBlock: !FindInMap ["SubnetConfig", "VPC", "CIDR"]
       Tags:
         - Key: Name
-          Value: vpc-servicediscovery-test
+          Value: !Sub ${NamePrefix}-vpc
 
   # Subnet作成
   PublicOneSubnet:
@@ -38,7 +43,7 @@ Resources:
       AvailabilityZone: ap-northeast-1a
       Tags:
         - Key: Name
-          Value: servicediscovery-test-PublicOneSubnet
+          Value: !Sub ${NamePrefix}-PublicOneSubnet
   PublicTwoSubnet:
     Type: AWS::EC2::Subnet
     Properties:
@@ -48,7 +53,7 @@ Resources:
       AvailabilityZone: ap-northeast-1c
       Tags:
         - Key: Name
-          Value: servicediscovery-test-PublicTwoSubnet
+          Value: !Sub ${NamePrefix}-PublicTwoSubnet
   Cloud9Subnet:
     Type: AWS::EC2::Subnet
     Properties:
@@ -58,7 +63,7 @@ Resources:
       AvailabilityZone: ap-northeast-1a
       Tags:
         - Key: Name
-          Value: servicediscovery-test-Cloud9Subnet
+          Value: !Sub ${NamePrefix}-Cloud9Subnet
   PrivateOneSubnet:
     Type: AWS::EC2::Subnet
     Properties:
@@ -68,7 +73,7 @@ Resources:
       AvailabilityZone: ap-northeast-1a
       Tags:
         - Key: Name
-          Value: servicediscovery-test-PrivateOneSubnet
+          Value: !Sub ${NamePrefix}-PrivateOneSubnet
   PrivateTwoSubnet:
     Type: AWS::EC2::Subnet
     Properties:
@@ -78,7 +83,7 @@ Resources:
       AvailabilityZone: ap-northeast-1c
       Tags:
         - Key: Name
-          Value: servicediscovery-test-PrivateTwoSubnet
+          Value: !Sub ${NamePrefix}-PrivateTwoSubnet
 
   # インターネットゲートウェイ作成とVPCへの紐づけ
   InternetGateway:
@@ -86,7 +91,7 @@ Resources:
     Properties:
       Tags:
         - Key: Name
-          Value: servicediscovery-test-InternetGateway
+          Value: !Sub ${NamePrefix}-InternetGateway
   AttachInternetGateway:
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
@@ -100,7 +105,7 @@ Resources:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: servicediscovery-test-RouteTableForPublicSubnet
+          Value: !Sub ${NamePrefix}-RouteTableForPublicSubnet
   RouteForPublicSubnet:
     Type: AWS::EC2::Route
     Properties:
@@ -123,90 +128,94 @@ Resources:
       RouteTableId: !Ref RouteTableForPublicSubnet
       SubnetId: !Ref Cloud9Subnet
 
-  # NATゲートウェイの作成
-  NatGatewayEIP:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: vpc
-  NatGateway:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId:
-        Fn::GetAtt:
-          - NatGatewayEIP
-          - AllocationId
-      SubnetId: !Ref PublicOneSubnet
-      Tags:
-        - Key: Name
-          Value: servicediscovery-test-NatGateway
+  # # NATゲートウェイの作成
+  # NatGatewayEIP:
+  #   Type: AWS::EC2::EIP
+  #   Properties:
+  #     Domain: vpc
+  # NatGateway:
+  #   Type: AWS::EC2::NatGateway
+  #   Properties:
+  #     AllocationId:
+  #       Fn::GetAtt:
+  #         - NatGatewayEIP
+  #         - AllocationId
+  #     SubnetId: !Ref PublicOneSubnet
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub ${NamePrefix}-NatGateway
 
-  # ルートテーブルの作成とサブネット(Private)との紐づけ
-  RouteTableForPrivateSubnet:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: RouteTableForPrivateSubnet
-  RouteForPrivateSubnet:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref RouteTableForPrivateSubnet
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGateway
-  AssocciateRouteTableForPrivateOneSubnet:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref RouteTableForPrivateSubnet
-      SubnetId: !Ref PrivateOneSubnet
-  AssocciateRouteTableForPrivateTwoSubnet:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref RouteTableForPrivateSubnet
-      SubnetId: !Ref PrivateTwoSubnet
+  # # ルートテーブルの作成とサブネット(Private)との紐づけ
+  # RouteTableForPrivateSubnet:
+  #   Type: AWS::EC2::RouteTable
+  #   Properties:
+  #     VpcId: !Ref VPC
+  #     Tags:
+  #       - Key: Name
+  #         Value: RouteTableForPrivateSubnet
+  # RouteForPrivateSubnet:
+  #   Type: AWS::EC2::Route
+  #   Properties:
+  #     RouteTableId: !Ref RouteTableForPrivateSubnet
+  #     DestinationCidrBlock: 0.0.0.0/0
+  #     NatGatewayId: !Ref NatGateway
+  # AssocciateRouteTableForPrivateOneSubnet:
+  #   Type: AWS::EC2::SubnetRouteTableAssociation
+  #   Properties:
+  #     RouteTableId: !Ref RouteTableForPrivateSubnet
+  #     SubnetId: !Ref PrivateOneSubnet
+  # AssocciateRouteTableForPrivateTwoSubnet:
+  #   Type: AWS::EC2::SubnetRouteTableAssociation
+  #   Properties:
+  #     RouteTableId: !Ref RouteTableForPrivateSubnet
+  #     SubnetId: !Ref PrivateTwoSubnet
 
   # セキュリティグループ作成
-  ContainerSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: servicediscovery-test-Container-SecurityGroup
-      GroupDescription: Access to the containers
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - CidrIp: !FindInMap ["SubnetConfig", "VPC", "CIDR"]
-          IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-      Tags:
-        - Key: Name
-          Value: servicediscovery-test-ContainerSecurityGroup
+  # SecurityGroup:
+  #   Type: AWS::EC2::SecurityGroup
+  #   Properties:
+  #     GroupName: !Sub ${NamePrefix}-vpc-default-SecurityGroup
+  #     GroupDescription: Access to the containers
+  #     VpcId: !Ref VPC
+  #     SecurityGroupIngress:
+  #       - CidrIp: !FindInMap ["SubnetConfig", "VPC", "CIDR"]
+  #         IpProtocol: tcp
+  #         FromPort: 80
+  #         ToPort: 80
+  #       - CidrIp: !FindInMap ["SubnetConfig", "VPC", "CIDR"]
+  #         IpProtocol: tcp
+  #         FromPort: 443
+  #         ToPort: 443
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub ${NamePrefix}-vpc-default-SecurityGroup
 
 Outputs:
   VpcId:
     Value: !Ref VPC
     Export:
-      Name: VPCFromServicediscoveryStack
+      Name: !Sub ${NamePrefix}-VpvId
   PublicOneSubnet:
     Value: !Ref PublicOneSubnet
     Export:
-      Name: PublicOneSubnetFromServicediscoveryStack
+      Name: !Sub ${NamePrefix}-PublicOneSubnet
   PublicTwoSubnet:
     Value: !Ref PublicTwoSubnet
     Export:
-      Name: PublicTwoSubnetFromServicediscoveryStack
+      Name: !Sub ${NamePrefix}-PublicTwoSubnet
   Cloud9Subnet:
     Value: !Ref Cloud9Subnet
     Export:
-      Name: Cloud9SubnetFromServicediscoveryStack
-  PrivateOneSubnet:
-    Value: !Ref PrivateOneSubnet
-    Export:
-      Name: PrivateOneSubnetFromServicediscoveryStack
-  PrivateTwoSubnet:
-    Value: !Ref PrivateTwoSubnet
-    Export:
-      Name: PrivateTwoSubnetFromServicediscoveryStack
-  ContainerSecurityGroup:
-    Value: !Ref ContainerSecurityGroup
-    Export:
-      Name: ContainerSecurityGroupFromServicediscoveryStack
+      Name: !Sub ${NamePrefix}-Cloud9Subnet
+  # PrivateOneSubnet:
+  #   Value: !Ref PrivateOneSubnet
+  #   Export:
+  #     Name: !Sub ${NamePrefix}-PrivateOneSubnet
+  # PrivateTwoSubnet:
+  #   Value: !Ref PrivateTwoSubnet
+  #   Export:
+  #     Name: !Sub ${NamePrefix}-PrivateTwoSubnet
+  # SecurityGroup:
+  #   Value: !Ref SecurityGroup
+  #   Export:
+  #     Name: !Sub ${NamePrefix}-vpc-default-SecurityGroup

@@ -1,17 +1,22 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: This stack deploys the servicediscovery cloudmap
 
+Parameters:
+  NamePrefix:
+    Type: String
+    Default: "servicediscovery-test"
+
 Resources:
   # CloudMapの作成
   PrivateDnsNamespace:
     Type: AWS::ServiceDiscovery::PrivateDnsNamespace
     Properties:
       Vpc:
-        Fn::ImportValue: VPCFromServicediscoveryStack
-      Name: servicediscovery-test-httpd.internal
+        Fn::ImportValue: !Sub "${NamePrefix}-VpvId"
+      Name: my-service-a.my-apps.svc.cluster.local
       Tags:
         - Key: Name
-          Value: servicediscovery-test-PrivateDnsNamespace
+          Value: !Sub ${NamePrefix}-PrivateDnsNamespace
   ServiceDiscovery:
     Type: AWS::ServiceDiscovery::Service
     Properties:
@@ -22,91 +27,90 @@ Resources:
           - Type: A
             TTL: 60
         NamespaceId: !GetAtt PrivateDnsNamespace.Id
-      Name: "servicediscovery-test-service"
+      Name: !Sub ${NamePrefix}-service
+#   # CloudMapの作成2
+#   PrivateDnsNamespace2:
+#     Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+#     Properties:
+#       Vpc:
+#         Fn::ImportValue: VPCFromServicediscoveryStack
+#       Name: !Sub ${NamePrefix}-httpd2.internal
+#       Tags:
+#         - Key: Name
+#           Value: !Sub ${NamePrefix}-PrivateDnsNamespace2
+#   ServiceDiscovery2:
+#     Type: AWS::ServiceDiscovery::Service
+#     Properties:
+#       HealthCheckCustomConfig:
+#         FailureThreshold: 1
+#       DnsConfig:
+#         DnsRecords:
+#           - Type: A
+#             TTL: 60
+#         NamespaceId: !GetAtt PrivateDnsNamespace2.Id
+#       Name: !Sub ${NamePrefix}-service2
 
-  # CloudMapの作成2
-  PrivateDnsNamespace2:
-    Type: AWS::ServiceDiscovery::PrivateDnsNamespace
-    Properties:
-      Vpc:
-        Fn::ImportValue: VPCFromServicediscoveryStack
-      Name: servicediscovery-test-httpd2.internal
-      Tags:
-        - Key: Name
-          Value: servicediscovery-test-PrivateDnsNamespace2
-  ServiceDiscovery2:
-    Type: AWS::ServiceDiscovery::Service
-    Properties:
-      HealthCheckCustomConfig:
-        FailureThreshold: 1
-      DnsConfig:
-        DnsRecords:
-          - Type: A
-            TTL: 60
-        NamespaceId: !GetAtt PrivateDnsNamespace2.Id
-      Name: "servicediscovery-test-service2"
+#   # 検証用のECSサービス作成
+#   ECSCluster:
+#     Type: AWS::ECS::Cluster
+#     Properties:
+#       ClusterName: !Sub ${NamePrefix}-cluster
+#   TaskDefinition:
+#     Type: AWS::ECS::TaskDefinition
+#     Properties:
+#       Cpu: 256
+#       Memory: 512
+#       Family: !Sub ${NamePrefix}-httpd-task
+#       NetworkMode: awsvpc
+#       RequiresCompatibilities:
+#         - FARGATE
+#       ContainerDefinitions:
+#         - Name: !Sub ${NamePrefix}-httpd-container
+#           Image: httpd:2.4.41-alpine
+#           PortMappings:
+#             - ContainerPort: 80
+#               HostPort: 80
+#               Protocol: http
+#           Essential: true
+#   ECSService:
+#     Type: "AWS::ECS::Service"
+#     Properties:
+#       ServiceName: !Sub ${NamePrefix}-httpd-container-service
+#       Cluster: !Ref ECSCluster
+#       TaskDefinition: !Ref TaskDefinition
+#       ServiceRegistries:
+#         - RegistryArn: !GetAtt ServiceDiscovery.Arn
+#       DesiredCount: 1
+#       LaunchType: "FARGATE"
+#       NetworkConfiguration:
+#         AwsvpcConfiguration:
+#           AssignPublicIp: "DISABLED"
+#           SecurityGroups:
+#             - Fn::ImportValue: !Sub ${NamePrefix}-vpc-default-SecurityGroup
+#           Subnets:
+#             - Fn::ImportValue: !Sub ${NamePrefix}-PrivateOneSubnet
+#             - Fn::ImportValue: !Sub ${NamePrefix}-PrivateTwoSubnet
+#   ECSService2:
+#     Type: "AWS::ECS::Service"
+#     Properties:
+#       ServiceName: !Sub ${NamePrefix}-httpd-container-service2
+#       Cluster: !Ref ECSCluster
+#       TaskDefinition: !Ref TaskDefinition
+#       ServiceRegistries:
+#         - RegistryArn: !GetAtt ServiceDiscovery2.Arn
+#       DesiredCount: 1
+#       LaunchType: "FARGATE"
+#       NetworkConfiguration:
+#         AwsvpcConfiguration:
+#           AssignPublicIp: "DISABLED"
+#           SecurityGroups:
+#             - Fn::ImportValue: !Sub ${NamePrefix}-vpc-default-SecurityGroup
+#           Subnets:
+#             - Fn::ImportValue: !Sub ${NamePrefix}-PrivateOneSubnet
+#             - Fn::ImportValue: !Sub ${NamePrefix}-PrivateTwoSubnet
 
-  # 検証用のECSサービス作成
-  ECSCluster:
-    Type: AWS::ECS::Cluster
-    Properties:
-      ClusterName: servicediscovery-test-cluster
-  TaskDefinition:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      Cpu: 256
-      Memory: 512
-      Family: servicediscovery-test-httpd-task
-      NetworkMode: awsvpc
-      RequiresCompatibilities:
-        - FARGATE
-      ContainerDefinitions:
-        - Name: servicediscovery-test-httpd-container
-          Image: httpd:2.4.41-alpine
-          PortMappings:
-            - ContainerPort: 80
-              HostPort: 80
-              Protocol: http
-          Essential: true
-  ECSService:
-    Type: "AWS::ECS::Service"
-    Properties:
-      ServiceName: servicediscovery-test-httpd-container-service
-      Cluster: !Ref ECSCluster
-      TaskDefinition: !Ref TaskDefinition
-      ServiceRegistries:
-        - RegistryArn: !GetAtt ServiceDiscovery.Arn
-      DesiredCount: 1
-      LaunchType: "FARGATE"
-      NetworkConfiguration:
-        AwsvpcConfiguration:
-          AssignPublicIp: "DISABLED"
-          SecurityGroups:
-            - Fn::ImportValue: ContainerSecurityGroupFromServicediscoveryStack
-          Subnets:
-            - Fn::ImportValue: PrivateOneSubnetFromServicediscoveryStack
-            - Fn::ImportValue: PrivateTwoSubnetFromServicediscoveryStack
-  ECSService2:
-    Type: "AWS::ECS::Service"
-    Properties:
-      ServiceName: servicediscovery-test-httpd-container-service2
-      Cluster: !Ref ECSCluster
-      TaskDefinition: !Ref TaskDefinition
-      ServiceRegistries:
-        - RegistryArn: !GetAtt ServiceDiscovery2.Arn
-      DesiredCount: 1
-      LaunchType: "FARGATE"
-      NetworkConfiguration:
-        AwsvpcConfiguration:
-          AssignPublicIp: "DISABLED"
-          SecurityGroups:
-            - Fn::ImportValue: ContainerSecurityGroupFromServicediscoveryStack
-          Subnets:
-            - Fn::ImportValue: PrivateOneSubnetFromServicediscoveryStack
-            - Fn::ImportValue: PrivateTwoSubnetFromServicediscoveryStack
-
-Outputs:
-  PrivateDnsNamespace:
-    Value: !Ref PrivateDnsNamespace
-  ServiceDiscovery:
-    Value: !Ref ServiceDiscovery
+# Outputs:
+#   PrivateDnsNamespace:
+#     Value: !Ref PrivateDnsNamespace
+#   ServiceDiscovery:
+#     Value: !Ref ServiceDiscovery
