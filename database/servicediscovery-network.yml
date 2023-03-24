@@ -1,0 +1,277 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: This stack deploys the database network
+
+Parameters:
+  NamePrefix:
+    Type: String
+    Default: "database-test"
+  ConnectionSourceIP:
+    Default: "Source IP"
+  Username:
+    Description: Name of DB mater username.
+    Type: String
+    Default: admin
+  Password:
+    Description: Name of DB mater user password.
+    Type: String
+    NoEcho: true
+  Engine:
+    Type: String
+    Default: aurora-postgresql
+  EngineVersion:
+    Type: String
+    Default: 10.6
+  DBInstanceClass:
+    Type: String
+    Default: db.r5.large
+  #aws rds describe-db-engine-versions --query "DBEngineVersions[].DBParameterGroupFamily"
+  DBEngineFamily:
+    Type: String
+    Default: ""
+
+Mappings:
+  SubnetConfig:
+    VPC:
+      CIDR: "10.1.0.0/16"
+    PublicOne:
+      CIDR: "10.1.0.0/24"
+    PublicTwo:
+      CIDR: "10.1.1.0/24"
+
+Resources:
+  # VPC作成
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: !FindInMap ["SubnetConfig", "VPC", "CIDR"]
+      Tags:
+        - Key: Name
+          Value: !Sub ${NamePrefix}-vpc
+
+  # Subnet作成
+  PublicOneSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !FindInMap ["SubnetConfig", "PublicOne", "CIDR"]
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref VPC
+      AvailabilityZone: ap-northeast-1a
+      Tags:
+        - Key: Name
+          Value: !Sub ${NamePrefix}-PublicOneSubnet
+  PublicTwoSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !FindInMap ["SubnetConfig", "PublicTwo", "CIDR"]
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref VPC
+      AvailabilityZone: ap-northeast-1c
+      Tags:
+        - Key: Name
+          Value: !Sub ${NamePrefix}-PublicTwoSubnet
+
+  # インターネットゲートウェイ作成とVPCへの紐づけ
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${NamePrefix}-InternetGateway
+  AttachInternetGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  # ルートテーブルの作成とサブネット(Public)との紐づけ
+  RouteTableForPublicSubnet:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${NamePrefix}-RouteTableForPublicSubnet
+  RouteForPublicSubnet:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTableForPublicSubnet
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  AssocciateRouteTableForPublicOneSubnet:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTableForPublicSubnet
+      SubnetId: !Ref PublicOneSubnet
+  AssocciateRouteTableForPublicTwoSubnet:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTableForPublicSubnet
+      SubnetId: !Ref PublicTwoSubnet
+
+  # RDS Subnet Group
+  RDSSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub ${NamePrefix} DB Subnet Group
+      SubnetIds:
+      - Ref: PublicOneSubnet
+      - Ref: PublicTwoSubnet
+      Tags:
+        - Key: Name
+          Value: !Sub ${NamePrefix}-db-subnet-group
+
+  # RDS Subnet Security Group
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId:
+        Ref: VPC
+      GroupDescription: !Sub ${NamePrefix} DB SecurityGroup
+      SecurityGroupIngress:
+      # MySQL
+      - IpProtocol: tcp
+        FromPort: '3306'
+        ToPort: '3306'
+        CidrIp: !Ref ConnectionSourceIP
+      # PostgreSQL
+      - IpProtocol: tcp
+        FromPort: '5432'
+        ToPort: '5432'
+        CidrIp: !Ref ConnectionSourceIP
+
+  # IAM Role for enhanced monitoring
+  RDSMonitoringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${NamePrefix}-rds-monitoring-role
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+            - "sts:AssumeRole"
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "monitoring.rds.amazonaws.com"
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole
+      Path: "/"
+
+  # DB Cluster Parameter Group
+  RDSDBClusterParameterGroup:
+    Type: AWS::RDS::DBClusterParameterGroup
+    Properties:
+      Description: !Sub ${NamePrefix}-db-cluster-param-group
+      Family: !Sub DBEngineFamily
+      Parameters:
+      client_encoding: UTF8
+      Tags:
+        - Key: Name
+          Value: !Sub ${NamePrefix}-db-cluster-param-group
+
+  # DB parameter group
+  RDSDBParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: !Sub ${NamePrefix}-db-param-group
+      Family: !Sub DBEngineFamily
+      Tags:
+        - Key: Name
+          Value: !Sub ${NamePrefix}-db-param-group
+
+  RDSCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      MasterUsername: !Sub Username
+      MasterUserPassword: !Sub Password
+      Engine: !Sub Engine
+      EngineMode: provisioned
+      EngineVersion: !Sub EngineVersion
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      DBClusterParameterGroupName: !Ref RDSDBClusterParameterGroup
+      VpcSecurityGroupIds:
+        - !Ref RDSSecurityGroup
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: 01:00-02:00
+      PreferredMaintenanceWindow: Tue:01:00-Tue:02:00
+      DatabaseName: !Sub ${NamePrefix}-database
+      DBClusterIdentifier: !Sub ${NamePrefix}-${Engine}
+      DeletionProtection: true
+      StorageEncrypted: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${NamePrefix}-${Engine}-cluster
+
+  RDSDBInstance1:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      DBParameterGroupName: !Ref RDSDBParameterGroup
+      Engine: !Sub Engine
+      EngineVersion: !Sub EngineVersion
+      DBClusterIdentifier: !Ref RDSCluster
+      AvailabilityZone: "ap-northeast-1a"
+      DBInstanceClass: !Sub DBInstanceClass
+      AutoMinorVersionUpgrade: true
+      CopyTagsToSnapshot: true
+      DBInstanceIdentifier: !Sub ${NamePrefix}-${Engine}-1
+      EnablePerformanceInsights: true
+      PreferredMaintenanceWindow: Tue:01:00-Tue:02:00
+      DeletionProtection: false
+      MonitoringInterval: 60
+      MonitoringRoleArn: !GetAtt RDSMonitoringRole.Arn
+      PubliclyAccessible: false
+      PromotionTier: 1
+      Tags:
+        - Key: Name
+          Value: !Sub ${NamePrefix}-${Engine}-1
+
+  # RDSDBInstance2:
+  #   Type: AWS::RDS::DBInstance
+  #   Properties:
+  #     DBSubnetGroupName: !Ref DBSubnetGroup
+  #     DBParameterGroupName: !Ref RDSDBParameterGroup
+  #     Engine: !Sub Engine
+  #     EngineVersion: !Sub EngineVersion
+  #     DBClusterIdentifier: !Ref RDSCluster
+  #     AvailabilityZone: "ap-northeast-1c"
+  #     DBInstanceClass: !Sub DBInstanceClass
+  #     AutoMinorVersionUpgrade: true
+  #     CopyTagsToSnapshot: true
+  #     DBInstanceIdentifier: !Sub ${NamePrefix}-${Engine}-2
+  #     EnablePerformanceInsights: true
+  #     PreferredMaintenanceWindow: Tue:01:00-Tue:02:00
+  #     DeletionProtection: false
+  #     MonitoringInterval: 60
+  #     MonitoringRoleArn: !GetAtt RDSMonitoringRole.Arn
+  #     PubliclyAccessible: false
+  #     PromotionTier: 2
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub ${NamePrefix}-${Engine}-2
+
+Outputs:
+  VpcId:
+    Value: !Ref VPC
+  PublicOneSubnet:
+    Value: !Ref PublicOneSubnet
+  PublicTwoSubnet:
+    Value: !Ref PublicTwoSubnet
+  InternetGateway:
+    Value: !Ref InternetGatewayId
+  RDSSubnetGroup:
+    Value: !Ref RDSSubnetGroup
+  RDSSecurityGroup:
+    Value: !Ref RDSSecurityGroup
+  RDSDBClusterParameterGroup:
+    Value: !Ref RDSDBClusterParameterGroup
+  RDSDBParameterGroup:
+    Value: !Ref RDSDBParameterGroup
+  RDSCluster:
+    Value: !Ref RDSCluster
+  RDSDBInstance1:
+    Value: !Ref RDSDBInstance1
+  RDSDBInstance2:
+    Value: !Ref RDSDBInstance2
